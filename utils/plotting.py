@@ -18,6 +18,18 @@ from IPython.display import Image, display
 from datetime import datetime
 from tqdm import tqdm
 
+#\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
+from collections import OrderedDict
+import seaborn as sns
+from scipy.stats import pearsonr
+from matplotlib.colors import LogNorm
+from kgcpy import *
+from geopy.geocoders import Nominatim
+from collections import defaultdict
+from kgcpy import *
+from geopy.geocoders import Nominatim
+#\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
+
 matplotlib.rcParams['agg.path.chunksize'] = 10000
 
 
@@ -616,3 +628,481 @@ def plot_preprocessed_images(input_file, target_file):
     ax_lst.set_title("LST tile", x=0.5, y=1.0, fontdict={'color': 'black'});
     fig.tight_layout()
     fig.show()
+
+
+class advanced_plots:
+    def __init__(self, input_file, target_file, predict_file):
+        self.input_file = input_file
+        self.target_file = target_file
+        self.predict_file = predict_file
+
+    def unique_cities_list(self):
+        cities = []
+        for i in range(len(os.listdir(self.target_file))):
+            entry=(os.listdir(self.target_file)[i])
+            name =entry.split('.')[0]
+            cities.append(name)
+        self.unique_cities =list(OrderedDict.fromkeys(cities))
+
+    def monthly_sort(self):
+        self.cities_data={}
+        monthly_data = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+        for i in tqdm(range(len(self.unique_cities))):
+            city_names = []
+            jan_tar = []
+            feb_tar = []
+            mar_tar = []
+            apr_tar = []
+            may_tar = []
+            jun_tar = []
+            jul_tar = []
+            aug_tar = []
+            sep_tar = []
+            oct_tar = []
+            nov_tar = []
+            dec_tar = [] 
+            self.months_tar = []
+            for j in range(len(os.listdir(self.target_file))):
+                entry=(os.listdir(self.target_file)[j])
+                name =entry.split('.')[0]
+                timeStamp = entry.split('.')[3]
+                year = timeStamp[0:4]
+                month = timeStamp[4:6]
+                day = timeStamp[6:8]
+
+                if name == self.unique_cities[i]:
+                    if month == "01":
+                        jan_tar.append(entry)
+                    elif month == "02":
+                        feb_tar.append(entry)
+                    elif month == "03":
+                        mar_tar.append(entry)
+                    elif month == "04":
+                        apr_tar.append(entry)
+                    elif month == "05":
+                        may_tar.append(entry)
+                    elif month == "06":
+                        jun_tar.append(entry)
+                    elif month == "07":
+                        jul_tar.append(entry)
+                    elif month == "08":
+                        aug_tar.append(entry)
+                    elif month == "09":
+                        sep_tar.append(entry)
+                    elif month == "10":
+                        oct_tar.append(entry)
+                    elif month == "11":
+                        nov_tar.append(entry)
+                    else:
+                        dec_tar.append(entry)
+
+            self.months_tar.append(jan_tar)
+            self.months_tar.append(feb_tar)
+            self.months_tar.append(mar_tar)
+            self.months_tar.append(apr_tar)
+            self.months_tar.append(may_tar)
+            self.months_tar.append(jun_tar)
+            self.months_tar.append(jul_tar)
+            self.months_tar.append(aug_tar)
+            self.months_tar.append(sep_tar)
+            self.months_tar.append(oct_tar)
+            self.months_tar.append(nov_tar)
+            self.months_tar.append(dec_tar)
+                    
+            self.cities_data.update({self.unique_cities[i]:self.months_tar}) 
+ 
+
+    def mse(self, pred, truth):
+        mse = (pred-truth)**2
+        mse = mse.mean(dim=['x','y'], skipna=True)['band_data'].values[0]
+        return mse
+    
+    def rolling_window_calculation(self):
+        self.cities_monthly_mae={}
+        self.cities_monthly_mse={}
+        self.cities_monthly_rmse={}
+        self.cities_rolling_avg_mae={}
+        self.cities_rolling_avg_mse={}
+        self.cities_rolling_avg_rmse={}
+        self.scatter_data_targ = {}
+        self.scatter_data_pred = {}
+        self.t2m_data = {}
+        for i in range(len(self.unique_cities)):
+            store_mae = []
+            store_mse = []
+            store_rmse = []
+            monthly_mae = []
+            monthly_mse = []
+            monthly_rmse = []
+            rolling_avg_mae = []
+            rolling_avg_mse = []
+            rolling_avg_rmse = []
+            test_scatter_targ = []
+            test_scatter_pred = []
+            t2m_data_array = []
+            for j in range(len(self.months_tar)):
+                #month = months_tar[j]
+                month = self.cities_data[self.unique_cities[i]][j]
+                target_fps_names = []
+                target_fps = glob.glob(os.path.join(self.target_file, "*.tif"))
+                for x in range(int(len(month))): 
+                    value= [".".join(os.path.basename(month[x]).split(".")[0:5])]
+                    #print(value)
+                    target_fps_names.append(value[0])
+                #print("loop count is ----",j,"\n",target_fps_names,"\n")
+
+
+                #print(target_fps_names)
+                predict_fps = [os.path.join(self.predict_file, f"{x}.inputs_pred.tif") for x in target_fps_names]
+                target_fps = [glob.glob(os.path.join(self.target_file, f"{x}.*.tif")) for x in target_fps_names]
+                input_fps = [glob.glob(os.path.join(self.input_file, f"{x}.inputs.tif")) for x in target_fps_names]
+
+                target_fps = []
+                target_fps_2 = [glob.glob(os.path.join(self.target_file, f"{x}.*.tif")) for x in target_fps_names]
+
+                for k in range(int(len(month))):
+                    target_fps.append(target_fps_2[k][0])
+
+                for tfp, pfp, ifp  in tqdm(zip(target_fps, predict_fps, input_fps), total=len(target_fps)):
+                        if not (os.path.isfile(tfp) and os.path.isfile(pfp) and os.path.isfile(ifp[0])):
+                            print(f"Skipping:  Either one of these files missing: \n{tfp}\n{pfp}")
+                            continue
+
+                        # read in target data
+                        test_band =rasterio.open(ifp[0])
+                        ds_target = xr.open_dataset(tfp)
+                        ds_target = ds_target.where(ds_target['band_data'] != -9999., np.nan)
+                        ds_pred = xr.open_dataset(pfp)
+                        ds_pred = ds_pred.where(~np.isnan(ds_target['band_data']), np.nan)
+                        # calculate MAE
+                        test_mae = mae(ds_pred, ds_target)
+                        test_mse = self.mse(ds_pred, ds_target)
+                        #print(test_mae,"\n")
+                        store_mae.append(test_mae)
+                        store_mse.append(test_mse)
+                        #print(store_mae,"\n")
+                        test_scatter_targ.append(np.squeeze(ds_target['band_data'].values))
+                        test_scatter_pred.append(np.squeeze(ds_pred['band_data'].values))
+                        t2m_data_array.append(np.nanmean(test_band.read(8)))
+
+                avg_mae = np.mean(store_mae)
+                #print("This is MAE",avg_mae,"and this is month",j,"for",unique_cities[i],"\n")
+
+                avg_mse = np.mean(store_mse)
+                rmse = avg_mse**(1/2)
+                monthly_mae.append(avg_mae)
+                monthly_mse.append(avg_mse)
+                monthly_rmse.append(rmse)
+
+            window_size = 3
+
+            k = 0
+            # Initialize an empty list to store moving averages
+            # Loop through the array to consider
+            # every window of size 3
+            while k < len(monthly_mae) - window_size + 1:
+                # Store elements from i to i+window_size
+                # in list to get the current window
+                window_mae = monthly_mae[k : k + window_size]
+                window_mse = monthly_mse[k : k + window_size]
+                window_rmse = monthly_rmse[k : k + window_size]
+                # Calculate the average of current window
+                window_average_mae = round(sum(window_mae) / window_size, 2)
+                window_average_mse = round(sum(window_mse) / window_size, 2)
+                window_average_rmse = round(sum(window_rmse) / window_size, 2)
+                # Store the average of current
+                # window in moving average list
+                rolling_avg_mae.append(window_average_mae)
+                rolling_avg_mse.append(window_average_mse)
+                rolling_avg_rmse.append(window_average_rmse)
+                # Shift window to right by one position
+                k += 1
+            Nov_Dec_Jan=np.mean([monthly_mae[10],monthly_mae[11],monthly_mae[0]])
+            Dec_Jan_Feb=np.mean([monthly_mae[11],monthly_mae[0],monthly_mae[1]])
+            rolling_avg_mae.append(Nov_Dec_Jan)
+            rolling_avg_mae.append(Dec_Jan_Feb)
+
+            Nov_Dec_Jan=np.mean([monthly_mse[10],monthly_mse[11],monthly_mse[0]])
+            Dec_Jan_Feb=np.mean([monthly_mse[11],monthly_mse[0],monthly_mse[1]])
+            rolling_avg_mse.append(Nov_Dec_Jan)
+            rolling_avg_mse.append(Dec_Jan_Feb)
+
+            Nov_Dec_Jan=np.mean([monthly_rmse[10],monthly_rmse[11],monthly_rmse[0]])
+            Dec_Jan_Feb=np.mean([monthly_rmse[11],monthly_rmse[0],monthly_rmse[1]])
+            rolling_avg_rmse.append(Nov_Dec_Jan)
+            rolling_avg_rmse.append(Dec_Jan_Feb)
+
+            #print("This is the city:",unique_cities[i],"and the MAE","\n",rolling_avg_mae,"\n")
+            #print("This is the city:",unique_cities[i],"and the MSE","\n",rolling_avg_mse,"\n")
+            #print("This is the city:",unique_cities[i],"and the RMSE","\n",rolling_avg_rmse,"\n")
+        
+            self.cities_monthly_mae.update({self.unique_cities[i]:monthly_mae})
+            self.cities_monthly_mse.update({self.unique_cities[i]:monthly_mse})
+            self.cities_monthly_rmse.update({self.unique_cities[i]:monthly_rmse})
+
+            self.cities_rolling_avg_mae.update({self.unique_cities[i]:rolling_avg_mae})
+            self.cities_rolling_avg_mse.update({self.unique_cities[i]:rolling_avg_mse})
+            self.cities_rolling_avg_rmse.update({self.unique_cities[i]:rolling_avg_rmse})
+
+            self.scatter_data_targ.update({self.unique_cities[i]:np.array(test_scatter_targ).flatten()})
+            self.scatter_data_pred.update({self.unique_cities[i]:np.array(test_scatter_pred).flatten()})
+            self.t2m_data.update({self.unique_cities[i]:{"Patch_MAE":store_mae,"t2m_spatial_avg":t2m_data_array}})
+
+    def proccess_city_data(self):
+        self.unique_cities_list()
+        self.monthly_sort()
+        self.rolling_window_calculation()
+        self.sort_climate_info_plot_data()
+        self.sort_t2m_plot_data()
+
+    def rolling_mae_plot(self):
+        plt.figure(figsize=(26, 11.75))
+        #print(cities_monthly_mae.shape)
+        plot_data_rol = pd.DataFrame.from_dict(self.cities_rolling_avg_mae)
+        #print(test,"\n")
+        #print(test.transpose(),"\n")
+        plot_data_rol = plot_data_rol.transpose()
+        #test.columns = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        plot_data_rol.columns = ['JFM','FMA','MAM','AMJ','MJJ','JJA','JAS','ASO','SON','OND','NDJ','DJF']
+        #print(test,"\n")
+        #print(test.transpose(),"\n")
+        data_rol_plot=sns.heatmap(plot_data_rol,cmap="rainbow",linewidths=0.025,annot=True,cbar_kws={'label':f"Mean Absolute Error \N{DEGREE SIGN}C"})
+        #mae_plot.figure.colorbar(mae_plot.collections[0]).set_label('Probability Scale')
+
+        #plt.title("Mean Absolute Error (MAE)", fontsize=16)
+        plt.xlabel("Time", fontsize=16)
+        plt.ylabel("Cities", fontsize=16)
+        #plt.set_label('Probability Scale')
+        figure = data_rol_plot.get_figure()
+        #figure.savefig('mae_plot_rolling_avg.png',bbox_inches='tight', dpi=500)
+
+    def density_scatter_plots(self):
+        correlation_dict = {}
+
+        x_bins = 500
+        y_bins = 500
+        x_min, x_max = 1, 1
+        y_min, y_max = 1, 1
+
+        num_rows = 3
+        num_cols = 2
+        city_index = 0
+        fig, axes = plt.subplots(nrows=num_rows, ncols=num_cols, figsize=(15, 18.75))
+
+        for i in range(num_rows):
+            for j in range(num_cols):
+                # Pearson correlations
+                min_p = np.nanmin(self.scatter_data_pred[self.unique_cities[city_index]])
+                #print(min_p,"\n")
+                max_p = np.nanmax(self.scatter_data_pred[self.unique_cities[city_index]])
+                #print(max_p,"\n")
+
+                gt_min = np.nanmin(self.scatter_data_targ[self.unique_cities[city_index]])
+                gt_max = np.nanmax(self.scatter_data_targ[self.unique_cities[city_index]])
+
+                #min and max across predictions and ground truth
+                vmin, vmax = np.minimum(gt_min,min_p), np.maximum(gt_max, max_p)
+                #print(vmin," ",vmax)
+                #print(LogNorm(vmin=vmin*-1, vmax=vmax))
+                #Flatten the target and prediction dtatsets into arrays
+                target_line = self.scatter_data_targ[self.unique_cities[city_index]]
+                #print(target_line,"\n")
+                pred_line = self.scatter_data_pred[self.unique_cities[city_index]]
+
+                #corr_gfm, _ = pearsonr(target_line, pred_line)
+                #print(corr_gfm)
+
+                df = pd.DataFrame({"Target":target_line,"Prediction":pred_line})
+                df =df.dropna()
+                #print(df)
+                correlation_value = df['Target'].corr(df['Prediction'])
+                #print(correlation_value)
+                correlation_dict.update({self.unique_cities[city_index]:[correlation_value]})
+                
+
+                # --- GridFM Mass Correlation ---
+                h1 = axes[i,j].hist2d(
+                    df['Target'], df['Prediction'],
+                    bins=[x_bins, y_bins],
+                    norm=LogNorm(vmin=abs(vmin), vmax=vmax),
+                    cmap="inferno"
+                )
+                
+                axes[i,j].set_xlabel(r'LST Obs [$\degree$ C]', fontsize=12)
+                axes[i,j].set_ylabel(r'LST Pred [$\degree$ C]', fontsize=12)
+                axes[i,j].plot([vmin, vmax], [vmin, vmax], 'b--')
+                axes[i,j].set_title(self.unique_cities[city_index])
+                axes[i,j].text(0.3, 0.01, f"Correlation  = {correlation_value:.5f}", transform=axes[i,j].transAxes, fontsize=10, weight='bold')
+
+                # Colorbar
+                cbar = fig.colorbar(h1[3], ax=axes[i,j], pad=0.02)
+                cbar.set_label("Number of samples", fontsize=10)
+
+                # Style adjustments
+                
+                axes[i,j].grid(True, linewidth=0.3)
+                axes[i,j].tick_params(axis='both', labelsize=10)
+                city_index+=1
+                #ax1.label_outer(f"Correlation = {correlation_value:.4f}")
+                
+                #ax1.bar_label(f"Correlation = {correlation_value:.4f}")
+        corr_dict =pd.DataFrame.from_dict(correlation_dict).transpose()
+        corr_dict.columns = ["Correlation"]
+        sorted_corr_dict =corr_dict.sort_values(by='Correlation')
+        print(sorted_corr_dict)
+
+        plt.tight_layout()
+        #plt.savefig("density_function_scatter_plot.png", bbox_inches="tight")
+        plt.show()
+
+    def getClimate_zones_test(self):
+        city_info  = pd.read_csv('../assets/databases/global_cities_database.csv',index_col=19)
+        city_names = self.unique_cities
+        self.climate_zones = {}
+        print(city_names[0][:].split("_"))
+        for i in tqdm(range(len(city_names))):
+            name = city_names[i][:].split("_")
+            print(name,"\n")
+            country_name = city_info.loc[city_names[i][:],'COUNTRY_NAME']
+            print("Country name:",country_name,"\n")
+            print("City name:",name[0],"\n")
+            # Initialize the Nominatim geocoder
+            geolocator = Nominatim(user_agent="my_city_converter")
+            # City name to convert
+            city_name = [name[0],country_name]
+            #print(city_name,"\n")
+
+            # Geocode the city name
+            location = geolocator.geocode(city_name)
+            #print("This is the city name",city_name[i] )
+
+            # Extract and print latitude and longitude if found
+            if location:
+                latitude = location.latitude
+                longitude = location.longitude
+                print(f"The latitude of {city_name} is: {latitude}")
+                print(f"The longitude of {city_name} is: {longitude}")
+                #print("\n")
+            else:
+                print(f"Could not find coordinates for {city_name}")
+
+            kg_zone = lookupCZ(latitude, longitude)
+            print('Koppen geiger zone is '+ kg_zone,"\n")
+
+            self.climate_zones.update({city_names[i][:]:{"City_Name":name[0],"Climate":kg_zone}})
+
+        #return climate_zones
+
+    def sort_climate_info_plot_data(self):
+        self.getClimate_zones_test()
+        self.climate_info=pd.DataFrame.from_dict(self.climate_zones).transpose()
+        city_mae={}
+        self.df_cities_monthly_mae = pd.DataFrame.from_dict(self.cities_monthly_mae)
+        for i in range(len(self.df_cities_monthly_mae.columns)):
+            city_mae.update({self.climate_info.index[i]:self.df_cities_monthly_mae[self.climate_info.index[i]].mean()})
+        city_mae=pd.DataFrame(city_mae,index=[0]).transpose()
+        city_mae.columns = ["MAE"]
+        self.full_climate_info= self.climate_info.join(city_mae)
+        unit = "C"
+        self.full_climate_info = self.full_climate_info.rename(columns={'MAE': f"Mean Absolute Error °{unit}"})
+
+        city_samples = defaultdict(int)
+        input_files = glob.glob(os.path.join(self.input_file, "*.tif"))
+        for i in range(len(input_files)):
+            city_samples[input_files[i].split("/")[-1].split(".")[0]] +=1
+
+        self.full_climate_info["Major_KCC"] = None
+        self.full_climate_info["Num_of_input_samples"] = None
+        print(len(self.full_climate_info.index))
+        major_kcc = ['A(tropical)','B(arid)','C(temperate)','D(continental)','E(polar)']
+
+        for i in range(len(self.full_climate_info.index)):
+            self.full_climate_info.loc[self.full_climate_info.index[i],'Num_of_input_samples'] = int(city_samples[self.full_climate_info.index[i]])
+            self.full_climate_info.loc[self.full_climate_info.index[i],'City_tag'] = str(i)+"_"+self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0]
+            
+            if self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0] == 'A':
+                self.full_climate_info.loc[self.full_climate_info.index[i],'Major_KCC'] = major_kcc[0]
+            elif self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0] == 'B':
+                self.full_climate_info.loc[self.full_climate_info.index[i],'Major_KCC'] = major_kcc[1]
+            elif self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0] == 'C':
+                self.full_climate_info.loc[self.full_climate_info.index[i],'Major_KCC'] = major_kcc[2]
+            elif self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0] == 'D':
+                self.full_climate_info.loc[self.full_climate_info.index[i],'Major_KCC'] = major_kcc[3]
+            elif self.full_climate_info.loc[self.full_climate_info.index[i]]['Climate'][0] == 'E':
+                self.full_climate_info.loc[self.full_climate_info.index[i],'Major_KCC'] = major_kcc[4]
+            else:
+                print("No major koppen climate classification found for the city")
+
+   
+    def first_climate_info_plot(self):
+        grouped = self.full_climate_info.groupby("City_Name")["Mean Absolute Error °C"].mean().sort_values(ascending=False).index
+        plt.figure(figsize=(15, 12))
+        ax = sns.barplot(data=self.full_climate_info,x="City_Name", y='Mean Absolute Error °C', hue="Climate",order=grouped)
+        ax.tick_params(axis='x', labelrotation=90)
+        plt.tight_layout()
+        plt.show()
+
+    def second_climate_info_plot(self):
+        grouped = self.full_climate_info.groupby(["Climate","City_Name"])['Mean Absolute Error °C'].sum().reset_index()
+        plt.figure(figsize=(15, 12))
+        ax = sns.barplot(data=self.full_climate_info,x="City_Name", y='Mean Absolute Error °C', hue="Climate",order=grouped)
+        ax.tick_params(axis='x', labelrotation=90)
+        plt.tight_layout()
+        plt.show()
+
+    def third_climate_info_plot(self):
+        plt.figure(figsize=(15, 12))
+        ax = sns.barplot(data=self.full_climate_info,x="City_Name", y='Mean Absolute Error °C', hue="Major_KCC")
+        ax.tick_params(axis='x', labelrotation=90)
+        plt.tight_layout()
+        plt.show()
+
+    def forth_climate_info_plot(self):
+        sample_data = self.full_climate_info.groupby('Major_KCC').agg(
+        Mean_Absolute_Error = ('Mean Absolute Error °C','mean'),
+        Num_of_input_samples =  ('Num_of_input_samples', 'sum'))
+        print(sample_data)
+        plt.figure(figsize=(15, 12))
+        ax = sns.barplot(data=sample_data,x="Num_of_input_samples", y='Mean_Absolute_Error', hue="Major_KCC")
+        ax.tick_params(axis='x', labelrotation=0)
+        plt.tight_layout()
+        plt.show()
+        
+
+    def sort_t2m_plot_data(self):
+        self.df_all_cites = pd.DataFrame(columns=['City_Name','Patch_MAE','t2m_spatial_avg','Climate'])
+        data = 0
+        for i in tqdm(range(len(self.climate_info.index))):
+            #for j in range(len(self.t2m_data[self.climate_info.index[i]]['t2m_spatial_avg'].strip('[]').split(","))):
+            for j in range(len(self.t2m_data[self.climate_info.index[i]]['t2m_spatial_avg'])):
+                data =self.climate_info.loc[[self.climate_info.index[i]]]
+                #print(data)
+                new_data = pd.DataFrame({'City_Name':[data['City_Name'][0]],
+                                    'Patch_MAE':[self.t2m_data[self.climate_info.index[i]]['Patch_MAE'][j]],
+                                    't2m_spatial_avg':[self.t2m_data[self.climate_info.index[i]]['t2m_spatial_avg'][j]],
+                                    'Climate':[data['Climate'][0]]})
+                self.df_all_cites = pd.concat([self.df_all_cites, new_data])
+        self.df_all_cites['Patch_MAE'] = self.df_all_cites['Patch_MAE'].astype(float)
+        self.df_all_cites['t2m_spatial_avg'] = self.df_all_cites['t2m_spatial_avg'].astype(float)
+        print(self.df_all_cites)
+
+    def t2m_scatter_plot(self):
+        plt.figure(figsize=(15, 12))
+        sns.scatterplot(data=self.df_all_cites, x="t2m_spatial_avg", y="Patch_MAE",hue="Climate",palette="deep")
+
+    def t2m_violin_plot(self):
+        plt.figure(figsize=(15, 12))
+        sns.violinplot(data=self.df_all_cites, x='Climate', y='t2m_spatial_avg',hue="Climate",palette="deep")
+
+    def t2m_patch_mae(self):
+        plt.figure(figsize=(15, 12))
+        sns.violinplot(data=self.df_all_cites, x='Climate', y='Patch_MAE',hue="Climate",palette="deep")
+
+    def t2m_pair_plot(self):
+        sns.pairplot(self.df_all_cites, hue="Climate", height=7.5)
+
+    def t2m_joint_plot(self):
+        sns.jointplot(x='t2m_spatial_avg', y='Patch_MAE', data=self.df_all_cites,hue="Climate",height=10)
+        plt.suptitle("Joint Density Plot", y=1.02) # Adjust suptitle position
+        plt.show()
