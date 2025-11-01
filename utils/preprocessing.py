@@ -418,21 +418,21 @@ class hls_preprocess:
                 if results == True:
                     working_path = os.path.join(processing_dir, subdir)
 
-                # ADD parameters and subdirs to tasks for MP
-                processing_params.append(
-                    (
-                        working_path,
-                        percent,
-                        city,
-                        miny,
-                        maxy,
-                        minx,
-                        maxx,
-                        hls_save_dir,
-                        hls_scale,
-                        lock,
+                    # ADD parameters and subdirs to tasks for MP
+                    processing_params.append(
+                        (
+                            working_path,
+                            percent,
+                            city,
+                            miny,
+                            maxy,
+                            minx,
+                            maxx,
+                            hls_save_dir,
+                            hls_scale,
+                            lock,
+                        )
                     )
-                )
 
         #### PREPROCESS WITH MULTIPROCESSING
         logging.info("Executing multiprocessing for HLS preprocessing tasks")

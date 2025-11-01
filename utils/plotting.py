@@ -28,10 +28,11 @@ from geopy.geocoders import Nominatim
 from collections import defaultdict
 from kgcpy import *
 from geopy.geocoders import Nominatim
+import warnings
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 matplotlib.rcParams['agg.path.chunksize'] = 10000
-
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def mae(pred, truth):
 
@@ -849,7 +850,7 @@ class advanced_plots:
             self.scatter_data_pred.update({self.unique_cities[i]:np.array(test_scatter_pred).flatten()})
             self.t2m_data.update({self.unique_cities[i]:{"Patch_MAE":store_mae,"t2m_spatial_avg":t2m_data_array}})
 
-    def proccess_city_data(self):
+    def process_city_data(self):
         self.unique_cities_list()
         self.monthly_sort()
         self.rolling_window_calculation()
@@ -965,27 +966,29 @@ class advanced_plots:
             name = city_names[i][:].split("_")
             print(name,"\n")
             country_name = city_info.loc[city_names[i][:],'COUNTRY_NAME']
-            print("Country name:",country_name,"\n")
-            print("City name:",name[0],"\n")
-            # Initialize the Nominatim geocoder
-            geolocator = Nominatim(user_agent="my_city_converter")
-            # City name to convert
-            city_name = [name[0],country_name]
-            #print(city_name,"\n")
-
-            # Geocode the city name
-            location = geolocator.geocode(city_name)
-            #print("This is the city name",city_name[i] )
-
-            # Extract and print latitude and longitude if found
-            if location:
-                latitude = location.latitude
-                longitude = location.longitude
-                print(f"The latitude of {city_name} is: {latitude}")
-                print(f"The longitude of {city_name} is: {longitude}")
-                #print("\n")
-            else:
-                print(f"Could not find coordinates for {city_name}")
+            #print("Country name:",country_name,"\n")
+            #print("City name:",name[0],"\n")
+            try:
+                # Initialize the Nominatim geocoder
+                geolocator = Nominatim(user_agent="my_city_converter", timeout=5)
+                # City name to convert
+                city_name = [name[0],country_name]
+                #print(city_name,"\n")
+                # Geocode the city name
+                location = geolocator.geocode(city_name)
+                #print("This is the city name",city_name[i] )
+    
+                # Extract and print latitude and longitude if found
+                if location:
+                    latitude = location.latitude
+                    longitude = location.longitude
+                    print(f"The latitude of {city_name} is: {latitude}")
+                    print(f"The longitude of {city_name} is: {longitude}")
+                    #print("\n")
+            except GeocoderTimedOut:
+                print("Geocoding request timed out. Please try again later or check your network.")
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
 
             kg_zone = lookupCZ(latitude, longitude)
             print('Koppen geiger zone is '+ kg_zone,"\n")
